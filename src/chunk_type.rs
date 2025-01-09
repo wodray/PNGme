@@ -1,8 +1,6 @@
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
-use anyhow::Result;
-
 /*
 Chunk Type，4 个字节的块类型代码。
 类型代码仅限于由大写和小写 ASCII 字母（A-Z 和 a-z，或十进制 65-90 和 97-122）组成
@@ -52,7 +50,7 @@ impl Display for ChunkType {
 }
 
 impl ChunkType {
-    fn bytes(&self) -> [u8; 4] {
+    pub(crate) fn bytes(&self) -> [u8; 4] {
         [self.0, self.1, self.2, self.3]
     }
 
