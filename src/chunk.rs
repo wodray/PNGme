@@ -7,7 +7,7 @@ const CRC: crc::Crc<u32> = crc::Crc::<u32>::new(&crc::CRC_32_ISO_HDLC);
 /*
 CRC：对数据块前面的字节计算的4字节CRC（循环冗余校验），包括数据块类型代码和数据块数据字段，但不包括长度字段。
  */
-struct Chunk {
+pub(crate) struct Chunk {
     length: u32,
     chunk_type: ChunkType,
     data: Vec<u8>,
@@ -80,7 +80,7 @@ impl Display for Chunk {
 }
 
 impl Chunk {
-    fn new(chunk_type: ChunkType, data: Vec<u8>) -> Chunk {
+    pub(crate) fn new(chunk_type: ChunkType, data: Vec<u8>) -> Chunk {
         let preceding_bytes = [chunk_type.bytes().as_ref(), &data].concat();
         let crc = CRC.checksum(&preceding_bytes);
         Self {
@@ -95,7 +95,7 @@ impl Chunk {
         self.length
     }
 
-    fn chunk_type(&self) -> &ChunkType {
+    pub(crate) fn chunk_type(&self) -> &ChunkType {
         &self.chunk_type
     }
 
@@ -107,11 +107,11 @@ impl Chunk {
         self.crc
     }
 
-    fn data_as_string(&self) -> Result<String> {
+    pub(crate) fn data_as_string(&self) -> Result<String> {
         Ok(String::from_utf8(self.data.to_vec())?)
     }
 
-    fn as_bytes(&self) -> Vec<u8> {
+    pub(crate) fn as_bytes(&self) -> Vec<u8> {
         self.length
             .to_be_bytes()
             .iter()

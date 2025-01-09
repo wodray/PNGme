@@ -3,7 +3,7 @@
 [PNGme](https://jrdngr.github.io/pngme_book/introduction.html)
 
 - [x] Chunk Types
-- [ ] Chunks
+- [x] Chunks
 - [ ] PNG Files
 - [ ] Command Line Arguments
 - [ ] Using Your Code to Write More Code
