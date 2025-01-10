@@ -1,12 +1,25 @@
 use crate::chunk::Chunk;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use std::fmt::{Display, Formatter};
-struct Png {}
+use std::io::{BufReader, Read};
+
+struct Png {
+    chunks: Vec<Chunk>,
+}
 
 impl TryFrom<&[u8]> for Png {
-    type Error = ();
+    type Error = &'static str;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let mut reader = BufReader::new(value);
+
+        let mut signature = [0; 8];
+        reader
+            .read_exact(&mut signature)
+            .map_err(|_| "No enough png signature bytes")?;
+        if signature != Self::STANDARD_HEADER {
+            return Err("Invalid png signature");
+        }
         todo!()
     }
 }
@@ -18,28 +31,45 @@ impl Display for Png {
 }
 
 impl Png {
-    pub const STANDARD_HEADER: [u8; 8] = [0; 8];
+    pub const STANDARD_HEADER: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
 
     fn from_chunks(chunks: Vec<Chunk>) -> Png {
-        todo!()
+        Self { chunks }
     }
+
     fn append_chunk(&mut self, chunk: Chunk) {
-        todo!()
+        self.chunks.push(chunk);
     }
+
     fn remove_first_chunk(&mut self, chunk_type: &str) -> Result<Chunk> {
-        todo!()
+        let first_index = self
+            .chunks
+            .iter()
+            .position(|x| x.chunk_type().to_string() == chunk_type)
+            .ok_or(anyhow!("No such chunk"))?;
+        Ok(self.chunks.remove(first_index))
     }
+
     fn header(&self) -> &[u8; 8] {
-        todo!()
+        &Self::STANDARD_HEADER
     }
+
     fn chunks(&self) -> &[Chunk] {
-        todo!()
+        self.chunks.as_slice()
     }
+
     fn chunk_by_type(&self, chunk_type: &str) -> Option<&Chunk> {
-        todo!()
+        self.chunks
+            .iter()
+            .find(|&x| x.chunk_type().to_string() == chunk_type)
     }
+
     fn as_bytes(&self) -> Vec<u8> {
-        todo!()
+        [
+            Self::STANDARD_HEADER.to_vec(),
+            self.chunks.iter().flat_map(|x| x.as_bytes()).collect(),
+        ]
+        .concat()
     }
 }
 
@@ -66,7 +96,7 @@ mod tests {
     fn chunk_from_strings(chunk_type: &str, data: &str) -> Result<Chunk> {
         use std::str::FromStr;
 
-        let chunk_type = ChunkType::from_str(chunk_type)?;
+        let chunk_type = ChunkType::from_str(chunk_type).map_err(|e| anyhow!(e))?;
         let data: Vec<u8> = data.bytes().collect();
 
         Ok(Chunk::new(chunk_type, data))
