@@ -1,3 +1,4 @@
+use anyhow::{bail, Error};
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
@@ -14,26 +15,26 @@ Chunk Type，4 个字节的块类型代码。
 pub(crate) struct ChunkType(u8, u8, u8, u8);
 
 impl TryFrom<[u8; 4]> for ChunkType {
-    type Error = &'static str;
+    type Error = Error;
 
     fn try_from(value: [u8; 4]) -> Result<Self, Self::Error> {
         if !value.iter().all(|&x| x.is_ascii_alphabetic()) {
-            return Err("Byte must be A-Z or a-z");
+            bail!("Byte must be A-Z or a-z");
         }
         Ok(Self(value[0], value[1], value[2], value[3]))
     }
 }
 
 impl FromStr for ChunkType {
-    type Err = &'static str;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.len() != 4 {
-            return Err("String length must be 4");
+            bail!("String length must be 4");
         }
         let value = s.as_bytes();
         if !value.iter().all(|&x| x.is_ascii_alphabetic()) {
-            return Err("Byte must be A-Z or a-z");
+            bail!("Byte must be A-Z or a-z");
         }
         Ok(Self(value[0], value[1], value[2], value[3]))
     }

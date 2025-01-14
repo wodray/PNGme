@@ -1,5 +1,5 @@
 use crate::chunk_type::ChunkType;
-use anyhow::Result;
+use anyhow::{bail, Context, Error, Result};
 use std::fmt::{Display, Formatter};
 
 const CRC: crc::Crc<u32> = crc::Crc::<u32>::new(&crc::CRC_32_ISO_HDLC);
@@ -15,46 +15,36 @@ pub(crate) struct Chunk {
 }
 
 impl TryFrom<&[u8]> for Chunk {
-    type Error = &'static str;
+    type Error = Error;
 
     // 字节表示：4 + 4 + len + 4
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         let (len_bytes, rest) = value
             .split_at_checked(4)
-            .ok_or("Length bytes length must be 4")?;
-        let length = u32::from_be_bytes(
-            len_bytes
-                .try_into()
-                .map_err(|_| "Invalid length bytes into u32")?,
-        );
+            .with_context(|| "Length bytes length must be 4")?;
+        let length = u32::from_be_bytes(len_bytes.try_into()?);
 
         let (chunk_type_bytes, rest) = rest
             .split_at_checked(4)
-            .ok_or("Chunk type bytes length must be 4")?;
-        let chunk_type_arr: [u8; 4] = chunk_type_bytes
-            .try_into()
-            .map_err(|_| "Invalid chunk type bytes into [u8; 4]")?;
+            .with_context(|| "Chunk type bytes length must be 4")?;
+        let chunk_type_arr: [u8; 4] = chunk_type_bytes.try_into()?;
         let chunk_type = ChunkType::try_from(chunk_type_arr)?;
 
         let (data_bytes, rest) = rest
             .split_at_checked(length as usize)
-            .ok_or("Data bytes must match given length")?;
+            .with_context(|| "Data bytes must match given length")?;
 
         let (crc_bytes, rest) = rest
             .split_at_checked(4)
-            .ok_or("CRC bytes length must be 4")?;
+            .with_context(|| "CRC bytes length must be 4")?;
         if rest.len() != 0 {
-            return Err("Invalid bytes length");
+            bail!("Invalid bytes length");
         }
-        let input_crc = u32::from_be_bytes(
-            crc_bytes
-                .try_into()
-                .map_err(|_| "Invalid CRC bytes into u32")?,
-        );
+        let input_crc = u32::from_be_bytes(crc_bytes.try_into()?);
         let preceding_bytes = [chunk_type_bytes, data_bytes].concat();
         let calculated_crc = CRC.checksum(&preceding_bytes);
         if input_crc != calculated_crc {
-            return Err("Invalid given CRC");
+            bail!("Invalid given CRC");
         }
 
         Ok(Self {
@@ -68,14 +58,11 @@ impl TryFrom<&[u8]> for Chunk {
 
 impl Display for Chunk {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{{ length: {}, chunk_type: \"{}\", data: {}, crc: {} }}",
-            self.length,
-            self.chunk_type,
-            self.data_as_string().map_err(|_| std::fmt::Error)?,
-            self.crc
-        )
+        let msg = String::from_utf8(self.data.to_vec());
+        match msg {
+            Ok(msg) => f.write_str(&msg),
+            Err(_) => f.write_str("Invalid utf-8 sequence"),
+        }
     }
 }
 
@@ -108,7 +95,7 @@ impl Chunk {
     }
 
     pub(crate) fn data_as_string(&self) -> Result<String> {
-        Ok(String::from_utf8(self.data.to_vec())?)
+        Ok(String::from_utf8(self.data.to_vec()).with_context(|| "Invalid utf-8 sequence")?)
     }
 
     pub(crate) fn as_bytes(&self) -> Vec<u8> {

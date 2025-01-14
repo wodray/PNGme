@@ -1,32 +1,52 @@
 use crate::chunk::Chunk;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Error, Result};
 use std::fmt::{Display, Formatter};
-use std::io::{BufReader, Read};
+use std::io::{BufRead, BufReader, Read};
 
-struct Png {
+pub(crate) struct Png {
     chunks: Vec<Chunk>,
 }
 
 impl TryFrom<&[u8]> for Png {
-    type Error = &'static str;
+    type Error = Error;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         let mut reader = BufReader::new(value);
+        reader.fill_buf()?;
 
         let mut signature = [0; 8];
-        reader
-            .read_exact(&mut signature)
-            .map_err(|_| "No enough png signature bytes")?;
+        reader.read_exact(&mut signature)?;
         if signature != Self::STANDARD_HEADER {
-            return Err("Invalid png signature");
+            bail!("Invalid png signature");
         }
-        todo!()
+
+        let mut all_chunks_bytes: Vec<Vec<u8>> = Vec::new();
+        let mut chunk_len_bytes = [0; 4];
+        let mut chunk_data_length = u32::from_be_bytes(chunk_len_bytes);
+        while !reader.buffer().is_empty() {
+            reader.read_exact(&mut chunk_len_bytes)?;
+            chunk_data_length = u32::from_be_bytes(chunk_len_bytes);
+            let mut remain_chunk_bytes = vec![0; 4 + chunk_data_length as usize + 4];
+            reader.read_exact(&mut remain_chunk_bytes)?;
+            all_chunks_bytes.push([chunk_len_bytes.to_vec(), remain_chunk_bytes].concat());
+        }
+
+        let mut chunks = Vec::new();
+        for chunk_bytes in all_chunks_bytes {
+            let chunk = Chunk::try_from(chunk_bytes.as_ref())?;
+            chunks.push(chunk);
+        }
+        Ok(Self { chunks })
     }
 }
 
 impl Display for Png {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        todo!()
+        let mut msgs = Vec::with_capacity(self.chunks.len());
+        for chunk in &self.chunks {
+            msgs.push(format!("{}", chunk));
+        }
+        f.write_str(&msgs.join(" - "))
     }
 }
 
@@ -78,7 +98,6 @@ mod tests {
     use super::*;
     use crate::chunk_type::ChunkType;
     use std::convert::TryFrom;
-    use std::str::FromStr;
 
     fn testing_chunks() -> Vec<Chunk> {
         vec![

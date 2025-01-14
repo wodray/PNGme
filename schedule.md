@@ -4,7 +4,7 @@
 
 - [x] Chunk Types
 - [x] Chunks
-- [ ] PNG Files
+- [x] PNG Files
 - [ ] Command Line Arguments
 - [ ] Using Your Code to Write More Code
 - [ ] Next Steps
