@@ -1,9 +1,11 @@
 use crate::chunk::Chunk;
-use anyhow::{anyhow, bail, Error, Result};
+use anyhow::{bail, Context, Error, Result};
 use std::fmt::{Display, Formatter};
 use std::io::{BufRead, BufReader, Read};
 
+#[derive(Debug)]
 pub(crate) struct Png {
+    signature: [u8; 8],
     chunks: Vec<Chunk>,
 }
 
@@ -21,14 +23,14 @@ impl TryFrom<&[u8]> for Png {
         }
 
         let mut all_chunks_bytes: Vec<Vec<u8>> = Vec::new();
-        let mut chunk_len_bytes = [0; 4];
-        let mut chunk_data_length = u32::from_be_bytes(chunk_len_bytes);
+        let mut chunk_data_len_bytes = [0; 4];
+        let mut chunk_data_length = u32::from_be_bytes(chunk_data_len_bytes);
         while !reader.buffer().is_empty() {
-            reader.read_exact(&mut chunk_len_bytes)?;
-            chunk_data_length = u32::from_be_bytes(chunk_len_bytes);
+            reader.read_exact(&mut chunk_data_len_bytes)?;
+            chunk_data_length = u32::from_be_bytes(chunk_data_len_bytes);
             let mut remain_chunk_bytes = vec![0; 4 + chunk_data_length as usize + 4];
             reader.read_exact(&mut remain_chunk_bytes)?;
-            all_chunks_bytes.push([chunk_len_bytes.to_vec(), remain_chunk_bytes].concat());
+            all_chunks_bytes.push([chunk_data_len_bytes.to_vec(), remain_chunk_bytes].concat());
         }
 
         let mut chunks = Vec::new();
@@ -36,17 +38,22 @@ impl TryFrom<&[u8]> for Png {
             let chunk = Chunk::try_from(chunk_bytes.as_ref())?;
             chunks.push(chunk);
         }
-        Ok(Self { chunks })
+        Ok(Self {
+            signature: Self::STANDARD_HEADER,
+            chunks,
+        })
     }
 }
 
 impl Display for Png {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let mut msgs = Vec::with_capacity(self.chunks.len());
+        let mut msg_list = Vec::with_capacity(self.chunks.len());
         for chunk in &self.chunks {
-            msgs.push(format!("{}", chunk));
+            if let Ok(s) = chunk.data_as_string() {
+                msg_list.push(s);
+            }
         }
-        f.write_str(&msgs.join(" - "))
+        f.write_str(&format!("Embedded message: {}", msg_list.join(", ")))
     }
 }
 
@@ -54,19 +61,22 @@ impl Png {
     pub const STANDARD_HEADER: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
 
     fn from_chunks(chunks: Vec<Chunk>) -> Png {
-        Self { chunks }
+        Self {
+            signature: Self::STANDARD_HEADER,
+            chunks,
+        }
     }
 
-    fn append_chunk(&mut self, chunk: Chunk) {
+    pub(crate) fn append_chunk(&mut self, chunk: Chunk) {
         self.chunks.push(chunk);
     }
 
-    fn remove_first_chunk(&mut self, chunk_type: &str) -> Result<Chunk> {
+    pub(crate) fn remove_first_chunk(&mut self, chunk_type: &str) -> Result<Chunk> {
         let first_index = self
             .chunks
             .iter()
             .position(|x| x.chunk_type().to_string() == chunk_type)
-            .ok_or(anyhow!("No such chunk"))?;
+            .with_context(|| "No such chunk")?;
         Ok(self.chunks.remove(first_index))
     }
 
@@ -78,15 +88,15 @@ impl Png {
         self.chunks.as_slice()
     }
 
-    fn chunk_by_type(&self, chunk_type: &str) -> Option<&Chunk> {
+    pub(crate) fn chunk_by_type(&self, chunk_type: &str) -> Option<&Chunk> {
         self.chunks
             .iter()
             .find(|&x| x.chunk_type().to_string() == chunk_type)
     }
 
-    fn as_bytes(&self) -> Vec<u8> {
+    pub(crate) fn as_bytes(&self) -> Vec<u8> {
         [
-            Self::STANDARD_HEADER.to_vec(),
+            self.signature.to_vec(),
             self.chunks.iter().flat_map(|x| x.as_bytes()).collect(),
         ]
         .concat()
@@ -115,7 +125,7 @@ mod tests {
     fn chunk_from_strings(chunk_type: &str, data: &str) -> Result<Chunk> {
         use std::str::FromStr;
 
-        let chunk_type = ChunkType::from_str(chunk_type).map_err(|e| anyhow!(e))?;
+        let chunk_type = ChunkType::from_str(chunk_type)?;
         let data: Vec<u8> = data.bytes().collect();
 
         Ok(Chunk::new(chunk_type, data))

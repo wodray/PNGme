@@ -5,8 +5,8 @@
 - [x] Chunk Types
 - [x] Chunks
 - [x] PNG Files
-- [ ] Command Line Arguments
-- [ ] Using Your Code to Write More Code
+- [x] Command Line Arguments
+- [x] Using Your Code to Write More Code
 - [ ] Next Steps
 
 ## 参考

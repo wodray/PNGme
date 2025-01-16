@@ -7,8 +7,9 @@ const CRC: crc::Crc<u32> = crc::Crc::<u32>::new(&crc::CRC_32_ISO_HDLC);
 /*
 CRC：对数据块前面的字节计算的4字节CRC（循环冗余校验），包括数据块类型代码和数据块数据字段，但不包括长度字段。
  */
+#[derive(Debug)]
 pub(crate) struct Chunk {
-    length: u32,
+    data_length: u32,
     chunk_type: ChunkType,
     data: Vec<u8>,
     crc: u32,
@@ -19,10 +20,10 @@ impl TryFrom<&[u8]> for Chunk {
 
     // 字节表示：4 + 4 + len + 4
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        let (len_bytes, rest) = value
+        let (data_len_bytes, rest) = value
             .split_at_checked(4)
             .with_context(|| "Length bytes length must be 4")?;
-        let length = u32::from_be_bytes(len_bytes.try_into()?);
+        let data_length = u32::from_be_bytes(data_len_bytes.try_into()?);
 
         let (chunk_type_bytes, rest) = rest
             .split_at_checked(4)
@@ -31,7 +32,7 @@ impl TryFrom<&[u8]> for Chunk {
         let chunk_type = ChunkType::try_from(chunk_type_arr)?;
 
         let (data_bytes, rest) = rest
-            .split_at_checked(length as usize)
+            .split_at_checked(data_length as usize)
             .with_context(|| "Data bytes must match given length")?;
 
         let (crc_bytes, rest) = rest
@@ -48,7 +49,7 @@ impl TryFrom<&[u8]> for Chunk {
         }
 
         Ok(Self {
-            length,
+            data_length,
             chunk_type,
             data: data_bytes.to_vec(),
             crc: input_crc,
@@ -71,7 +72,7 @@ impl Chunk {
         let preceding_bytes = [chunk_type.bytes().as_ref(), &data].concat();
         let crc = CRC.checksum(&preceding_bytes);
         Self {
-            length: data.len() as u32,
+            data_length: data.len() as u32,
             chunk_type,
             data,
             crc,
@@ -79,7 +80,7 @@ impl Chunk {
     }
 
     fn length(&self) -> u32 {
-        self.length
+        self.data_length
     }
 
     pub(crate) fn chunk_type(&self) -> &ChunkType {
@@ -99,7 +100,7 @@ impl Chunk {
     }
 
     pub(crate) fn as_bytes(&self) -> Vec<u8> {
-        self.length
+        self.data_length
             .to_be_bytes()
             .iter()
             .chain(self.chunk_type.bytes().iter())
