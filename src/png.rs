@@ -24,10 +24,9 @@ impl TryFrom<&[u8]> for Png {
 
         let mut all_chunks_bytes: Vec<Vec<u8>> = Vec::new();
         let mut chunk_data_len_bytes = [0; 4];
-        let mut chunk_data_length = u32::from_be_bytes(chunk_data_len_bytes);
         while !reader.buffer().is_empty() {
             reader.read_exact(&mut chunk_data_len_bytes)?;
-            chunk_data_length = u32::from_be_bytes(chunk_data_len_bytes);
+            let chunk_data_length = u32::from_be_bytes(chunk_data_len_bytes);
             let mut remain_chunk_bytes = vec![0; 4 + chunk_data_length as usize + 4];
             reader.read_exact(&mut remain_chunk_bytes)?;
             all_chunks_bytes.push([chunk_data_len_bytes.to_vec(), remain_chunk_bytes].concat());
@@ -49,16 +48,27 @@ impl Display for Png {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut msg_list = Vec::with_capacity(self.chunks.len());
         for chunk in &self.chunks {
+            if Self::STANDARD_CHUNKS.contains(&chunk.chunk_type().bytes()) {
+                continue;
+            }
             if let Ok(s) = chunk.data_as_string() {
-                msg_list.push(s);
+                msg_list.push(format!("\"{}\"", s));
             }
         }
-        f.write_str(&format!("Embedded message: {}", msg_list.join(", ")))
+        f.write_str(&format!("Embedded message: [{}]", msg_list.join(", ")))
     }
 }
 
 impl Png {
     pub const STANDARD_HEADER: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
+    const STANDARD_CHUNKS: [[u8; 4]; 6] = [
+        [73, 72, 68, 82],   // IHDR
+        [73, 68, 65, 84],   // IDAT
+        [73, 69, 78, 68],   // IEND
+        [115, 82, 71, 66],  // sRGB
+        [103, 65, 77, 65],  // gAMA
+        [112, 72, 89, 115], // pHYs
+    ];
 
     fn from_chunks(chunks: Vec<Chunk>) -> Png {
         Self {
@@ -68,14 +78,15 @@ impl Png {
     }
 
     pub(crate) fn append_chunk(&mut self, chunk: Chunk) {
-        self.chunks.push(chunk);
+        // IEND must appear last
+        self.chunks.insert(self.chunks.len() - 1, chunk);
     }
 
     pub(crate) fn remove_first_chunk(&mut self, chunk_type: &str) -> Result<Chunk> {
         let first_index = self
             .chunks
             .iter()
-            .position(|x| x.chunk_type().to_string() == chunk_type)
+            .position(|x| x.chunk_type().bytes() == chunk_type.as_bytes())
             .with_context(|| "No such chunk")?;
         Ok(self.chunks.remove(first_index))
     }
